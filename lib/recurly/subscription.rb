@@ -37,8 +37,6 @@ module Recurly
       trial_ends_at
       pending_subscription
       subscription_add_ons
-      coupon_code
-      starts_at
     )
     alias to_param uuid
 
