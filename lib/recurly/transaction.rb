@@ -33,6 +33,7 @@ module Recurly
       avs_result_street
       created_at
       details
+      reference
     )
     alias to_param uuid
 
