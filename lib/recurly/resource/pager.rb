@@ -160,6 +160,15 @@ module Recurly
         new(attributes) { |record| record.save! }
       end
 
+      def find uuid
+        if resource_class.respond_to? :find
+          raise NoMethodError,
+            "#find must be called on #{resource_class} directly"
+        end
+
+        resource_class.from_response API.get("#{uri}/#{uuid}")
+      end
+
       # @return [true, false]
       # @see Object#respond_to?
       def respond_to? method_name, include_private = false
@@ -177,8 +186,8 @@ module Recurly
         @count = response['X-Records'].to_i
         @links = {}
         if links = response['Link']
-          links.scan(/<([^>]+)>; rel="([^"]+)"/).each do |link|
-            @links[link.last] = link.first.freeze
+          links.scan(/<([^>]+)>; rel="([^"]+)"/).each do |link, rel|
+            @links[rel] = link.freeze
           end
         end
         @links.freeze

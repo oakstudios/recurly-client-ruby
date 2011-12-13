@@ -205,7 +205,7 @@ module Recurly
       #   a.name_change      # => [nil, "Stephen"]
       def define_attribute_methods attribute_names
         @attribute_names = attribute_names.map! { |m| m.to_s }.sort!.freeze
-        remove_const :AttributeMethods if const_defined? :AttributeMethods
+        remove_const :AttributeMethods if constants.include? :AttributeMethods
         include const_set :AttributeMethods, Module.new {
           attribute_names.each do |name|
             define_method(name) { self[name] }                       # Get.
@@ -422,7 +422,7 @@ module Recurly
       # @return [Hash] A list of association names for the current class.
       def associations
         @associations ||= begin
-          unless const_defined? :Associations
+          unless constants.include? :Associations
             include const_set :Associations, Module.new
           end
 
@@ -506,11 +506,12 @@ module Recurly
         a = associations.find { |k, v| v.include? name.to_s } and a.first
       end
 
-      def embedded!
-        private_class_method(*%w(
-          new create create! paginate find_each scoped where all
-        ))
+      def embedded! root_index = false
         private :initialize
+        private_class_method(*%w(new create create!))
+        unless root_index
+          private_class_method(*%w(all find_each first paginate scoped where))
+        end
       end
     end
 
@@ -842,6 +843,32 @@ module Recurly
 
     def == other
       other.is_a?(self.class) && other.to_s == to_s
+    end
+
+    def marshal_dump
+      [
+        @attributes.reject { |k, v| v.is_a? Proc },
+        @new_record,
+        @destroyed,
+        @uri,
+        @href,
+        changed_attributes,
+        previous_changes,
+        etag,
+        response
+      ]
+    end
+
+    def marshal_load serialization
+      @attributes,
+        @new_record,
+        @destroyed,
+        @uri,
+        @href,
+        @changed_attributes,
+        @previous_changes,
+        @response,
+        @etag = serialization
     end
 
     # @return [String]
