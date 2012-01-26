@@ -23,17 +23,33 @@ module Recurly
       attr_writer :private_key
 
       # @return [String]
-      def sign_billing_info account_code
-        sign 'billinginfoupdate', 'account_code' => account_code
+      def sign_subscription plan_code, account_code, extras = {}
+        sign 'subscriptioncreate', {
+          'plan_code' => plan_code,
+          'account_code' => account_code
+         }, extras
       end
 
       # @return [String]
-      def sign_transaction amount_in_cents, currency = nil, account_code = nil
+      def sign_billing_info account_code, extras = {}
+        sign 'billinginfoupdate', { 'account_code' => account_code }, extras
+      end
+
+      # @return [String]
+      def sign_transaction(
+        amount_in_cents, currency = nil, account_code = nil, extras = {}
+      )
         sign 'transactioncreate', {
           'amount_in_cents' => amount_in_cents,
           'currency'        => currency || Recurly.default_currency,
           'account_code'    => account_code
-        }
+        }, extras
+      end
+
+      # @return [true]
+      # @raise [RequestForgery] If verification fails.
+      def verify_subscription! params
+        verify! 'subscriptioncreated', params
       end
 
       # @return [true]
@@ -48,12 +64,6 @@ module Recurly
         verify! 'transactioncreated', params
       end
 
-      # @return [true]
-      # @raise [RequestForgery] If verification fails.
-      def verify_subscription! params
-        verify! 'subscriptioncreated', params
-      end
-
       # @return [String]
       def inspect
         'Recurly.js'
@@ -61,13 +71,23 @@ module Recurly
 
       private
 
-      def sign claim, params, timestamp = Time.now
-        signature = OpenSSL::HMAC.hexdigest(
+      def collect_keypaths extras, prefix = nil
+        if extras.is_a? Hash
+          extras.map { |key, value|
+            collect_keypaths value, prefix ? "#{prefix}.#{key}" : key.to_s
+          }.flatten.sort
+        else
+          prefix
+        end
+      end
+
+      def sign claim, params, extras = {}, timestamp = Time.now
+        hexdigest = OpenSSL::HMAC.hexdigest(
           OpenSSL::Digest::Digest.new('SHA1'),
           Digest::SHA1.digest(private_key),
-          digest([timestamp = timestamp.to_i, claim, params])
+          digest([timestamp = timestamp.to_i, claim, params.merge(extras)])
         )
-        "#{signature}-#{timestamp}"
+        ["#{hexdigest}-#{timestamp}", *collect_keypaths(extras)].join '+'
       end
 
       def verify! claim, params
@@ -81,7 +101,7 @@ module Recurly
           raise RequestForgery, 'stale timestamp'
         end
 
-        if signature != sign(claim, params, timestamp)
+        if signature != sign(claim, params, {}, timestamp)
           raise RequestForgery,
             "signature can't be verified (invalid request or private key)"
         end

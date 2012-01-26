@@ -31,7 +31,7 @@ describe Recurly.js do
 
     it "must encode nested arrays and hashes" do
       digest.call(
-        { :a => [1, 2, 3], :b => { :c => '123', :d => '456' } }
+        :a => [1, 2, 3], :b => { :c => '123', :d => '456' }
       ).must_equal '[a:[1,2,3],b:[c:123,d:456]]'
     end
 
@@ -75,8 +75,25 @@ describe Recurly.js do
     end
 
     it "must generate proper signatures" do
-      signed = sign.call 'update', :a => 'foo', :b => 'bar'
-      signed.must_equal signature
+      sig = sign.call 'update', :a => 'foo', :b => 'bar'
+      sig.must_equal signature
+    end
+
+    it "must sign subscription" do
+      sig = js.method(:sign_subscription).call 'plan','acc', {:a => {:a1 => 'v'}}
+      sig.must_equal 'aef4df3aabfdfc414a6700b2a001231a4c0c91bd-1312806801+a.a1'
+    end
+
+    it "must sign billing_info" do
+      sig = js.method(:sign_billing_info).call 'acc', :a => { :a1 => 'v' }
+      sig.must_equal '796e4f02e24ee5fc8a248f8ff123749e08a033da-1312806801+a.a1'
+    end
+
+    it "must sign transaction" do
+      sig = js.method(:sign_transaction).call(
+        50_00, 'USD', 'acc', :a => { :a1 => 'v' }
+      )
+      sig.must_equal '16754dea33128cb3a83bcd7ca937ca45742739e7-1312806801+a.a1'
     end
 
     it "must validate proper signatures" do
@@ -87,6 +104,15 @@ describe Recurly.js do
       proc {
         verify.call 'update', :a => 'foo', :b => 'bar', :signature => 'baz'
       }.must_raise js::RequestForgery
+    end
+
+    it "must merge extras into hmac and append their keys to the signature" do
+      signed = sign.call('update', { :a => 'foo', :b => 'bar' },
+        { :acct => { :name => 'joe' } }
+      )
+      signed.must_equal(
+        "1b85c19394eaea131a8d43eaada91634625d8f18-#{timestamp}+acct.name"
+      )
     end
 
     it "must reject a stale signature" do
@@ -106,7 +132,6 @@ describe Recurly.js do
         )
       }.must_raise js::RequestForgery
     end
-
     it "must verify billing info" do
       js.verify_billing_info!(
         'signature' => "07e7bea6a5bcb65d8dd93f8e314b2dab686c8ca8-#{timestamp}"
@@ -125,4 +150,14 @@ describe Recurly.js do
       )
     end
   end
+
+  describe "collect_keypaths" do
+    let(:collect_keypaths) { js.method :collect_keypaths }
+    it "must collect keypaths" do
+      test_obj = {:a => { :a1 => 'a1', :a2 => 'a2' }, :b => 'b' }
+      keypaths = collect_keypaths.call(test_obj)
+      keypaths.must_equal ['a.a1','a.a2','b']
+    end
+  end
+
 end
